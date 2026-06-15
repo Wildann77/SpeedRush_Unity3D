@@ -37,6 +37,11 @@ namespace SpeedRush
         private string timeBonusText = "";
         private Coroutine timeBonusCoroutine;
 
+        [Header("Anti-Stuck UI")]
+        private TMP_Text dynamicResetWarningText;
+        private bool isWarningTextShowing = false;
+        private Coroutine warningBlinkCoroutine;
+
         private void Awake()
         {
             if (Instance == null)
@@ -306,6 +311,7 @@ namespace SpeedRush
                     rb.isKinematic = false;
                 }
                 
+                playerCar.ResetStuckTimer();
                 Debug.Log("Mobil berhasil di-reset ke Checkpoint Terakhir!");
             }
         }
@@ -363,6 +369,92 @@ namespace SpeedRush
         {
             Time.timeScale = 1f;
             SceneManager.LoadScene(mainMenuName);
+        }
+
+        // --- DYNAMIC ANTI-STUCK UI SYSTEM ---
+        private void SetupResetWarningUI()
+        {
+            if (dynamicResetWarningText != null) return;
+
+            // Cari Canvas di scene aktif
+            Canvas canvas = Object.FindFirstObjectByType<Canvas>();
+            if (canvas == null)
+            {
+                Debug.LogWarning("Tidak ditemukan Canvas untuk membuat UI Reset Warning secara dinamis.");
+                return;
+            }
+
+            // Buat objek teks peringatan secara dinamis
+            GameObject warningObj = new GameObject("DynamicResetWarningText", typeof(RectTransform), typeof(TextMeshProUGUI));
+            warningObj.transform.SetParent(canvas.transform, false);
+
+            dynamicResetWarningText = warningObj.GetComponent<TextMeshProUGUI>();
+            dynamicResetWarningText.text = "TEKAN 'R' UNTUK RESET MOBIL";
+            
+            // Samakan font dengan timerText jika ada
+            if (timerText != null)
+            {
+                dynamicResetWarningText.font = timerText.font;
+            }
+            
+            dynamicResetWarningText.fontSize = 28;
+            dynamicResetWarningText.color = Color.yellow;
+            dynamicResetWarningText.alignment = TextAlignmentOptions.Center;
+
+            // Konfigurasi letak di tengah-bawah layar secara responsif
+            RectTransform rect = warningObj.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.25f);
+            rect.anchorMax = new Vector2(0.5f, 0.25f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = Vector2.zero;
+            rect.sizeDelta = new Vector2(500, 60);
+
+            warningObj.SetActive(false);
+        }
+
+        public void ShowResetWarning(bool show)
+        {
+            if (dynamicResetWarningText == null)
+            {
+                SetupResetWarningUI();
+            }
+
+            if (dynamicResetWarningText != null)
+            {
+                if (show)
+                {
+                    if (!isWarningTextShowing)
+                    {
+                        isWarningTextShowing = true;
+                        dynamicResetWarningText.gameObject.SetActive(true);
+                        if (warningBlinkCoroutine != null) StopCoroutine(warningBlinkCoroutine);
+                        warningBlinkCoroutine = StartCoroutine(BlinkWarningText());
+                    }
+                }
+                else
+                {
+                    if (isWarningTextShowing)
+                    {
+                        isWarningTextShowing = false;
+                        if (warningBlinkCoroutine != null) StopCoroutine(warningBlinkCoroutine);
+                        dynamicResetWarningText.gameObject.SetActive(false);
+                    }
+                }
+            }
+        }
+
+        private IEnumerator BlinkWarningText()
+        {
+            while (isWarningTextShowing && dynamicResetWarningText != null)
+            {
+                dynamicResetWarningText.enabled = !dynamicResetWarningText.enabled;
+                // Menggunakan WaitForSecondsRealtime agar berkedip tetap stabil walaupun game physics melambat
+                yield return new WaitForSecondsRealtime(0.4f);
+            }
+            if (dynamicResetWarningText != null)
+            {
+                dynamicResetWarningText.enabled = true;
+            }
         }
     }
 }

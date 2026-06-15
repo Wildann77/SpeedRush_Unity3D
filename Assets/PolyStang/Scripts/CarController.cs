@@ -79,6 +79,11 @@ namespace PolyStang
 
         public List<Wheel> wheels;
 
+        [Header("Anti-Stuck Settings")]
+        public float stuckDetectTime = 2.5f;
+        public float autoFlipTime = 5.0f;
+        private float upsideDownTimer = 0f;
+
         float moveInput;
         float steerInput;
         private float keyboardSteerTarget; // Digunakan untuk smoothing input keyboard
@@ -142,6 +147,7 @@ namespace PolyStang
             AnimateWheels();
             WheelEffectsCheck();
             CarLightsControl();
+            CheckStuck();
         }
 
         void FixedUpdate()
@@ -442,6 +448,80 @@ namespace PolyStang
             maxAcceleration = originalMaxAcceleration;
             frontMaxSpeed = originalFrontMaxSpeed;
             isBoosting = false;
+        }
+
+        // --- ANTI-STUCK & AUTO-FLIP FEATURE ---
+        private void CheckStuck()
+        {
+            // Deteksi jika mobil terbalik (kemiringan sudut atas) dan kecepatannya rendah
+            bool conditionUpsideDown = (transform.up.y < 0.4f) && (carRb != null && carRb.linearVelocity.magnitude < 1.0f);
+            
+            // Deteksi jika pemain mencoba bergerak (gas/mundur) namun mobil hampir diam (misal terjebak di rintangan)
+            bool isTryingToMove = Mathf.Abs(moveInput) > 0.1f;
+            bool isNearlyStationary = carRb != null && carRb.linearVelocity.magnitude < 0.15f;
+            bool conditionStuck = isTryingToMove && isNearlyStationary;
+
+            if (conditionUpsideDown || conditionStuck)
+            {
+                upsideDownTimer += Time.deltaTime;
+            }
+            else
+            {
+                upsideDownTimer = 0f;
+                if (SpeedRush.SR_GameManager.Instance != null)
+                {
+                    SpeedRush.SR_GameManager.Instance.ShowResetWarning(false);
+                }
+            }
+
+            // Jika melebihi stuckDetectTime, munculkan peringatan UI
+            if (upsideDownTimer >= stuckDetectTime)
+            {
+                if (SpeedRush.SR_GameManager.Instance != null)
+                {
+                    SpeedRush.SR_GameManager.Instance.ShowResetWarning(true);
+                }
+            }
+
+            // Jika melebihi autoFlipTime, lakukan auto-flip otomatis
+            if (upsideDownTimer >= autoFlipTime)
+            {
+                AutoFlip();
+            }
+        }
+
+        public void AutoFlip()
+        {
+            upsideDownTimer = 0f;
+            if (SpeedRush.SR_GameManager.Instance != null)
+            {
+                SpeedRush.SR_GameManager.Instance.ShowResetWarning(false);
+            }
+
+            // Memperbaiki rotasi mobil (tegak kembali) dengan tetap mempertahankan arah hadap (yaw/y)
+            Vector3 currentRotation = transform.rotation.eulerAngles;
+            transform.rotation = Quaternion.Euler(0f, currentRotation.y, 0f);
+
+            // Mengangkat mobil sedikit agar roda tidak masuk/tersangkut di dalam tanah/pembatas
+            transform.position += Vector3.up * 1.5f;
+
+            // Hentikan kecepatan agar mobil stabil setelah di-flip
+            if (carRb != null)
+            {
+                carRb.linearVelocity = Vector3.zero;
+                carRb.angularVelocity = Vector3.zero;
+            }
+
+            Debug.Log("Mobil di-Auto-Flip secara otomatis!");
+        }
+
+        public void ResetStuckTimer()
+        {
+            upsideDownTimer = 0f;
+            if (SpeedRush.SR_GameManager.Instance != null)
+            {
+                SpeedRush.SR_GameManager.Instance.ShowResetWarning(false);
+            }
         }
     }
 }
