@@ -83,15 +83,21 @@ namespace PolyStang
         public float stuckDetectTime = 2.5f;
         public float autoFlipTime = 5.0f;
         private float upsideDownTimer = 0f;
+        public float flippos = 4f;
 
-        float moveInput;
-        float steerInput;
+        private float moveInput;
+        private float steerInput;
         private float keyboardSteerTarget; // Digunakan untuk smoothing input keyboard
 
         private Rigidbody carRb;
 
         private CarLights carLights;
         private CarSounds carSounds;
+
+        void Awake()
+        {
+            SetupCamera();
+        }
 
         void Start() // called the first frame, when the game starts.
         {
@@ -100,8 +106,6 @@ namespace PolyStang
 
             carLights = GetComponent<CarLights>();
             carSounds = GetComponent<CarSounds>();
-
-            SetupCamera();
         }
 
         void SetupCamera()
@@ -112,6 +116,7 @@ namespace PolyStang
             if (mainCam == null) return;
 
             mainCam.tag = "MainCamera";
+            mainCam.fieldOfView = 70f;
             if (mainCam.GetComponent<CinemachineBrain>() == null)
             {
                 mainCam.gameObject.AddComponent<CinemachineBrain>();

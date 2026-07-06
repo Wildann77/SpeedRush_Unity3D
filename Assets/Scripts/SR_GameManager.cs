@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using TMPro;
 using System.Collections;
+using System.Collections.Generic;
 
 namespace SpeedRush
 {
@@ -41,6 +42,11 @@ namespace SpeedRush
         private TMP_Text dynamicResetWarningText;
         private bool isWarningTextShowing = false;
         private Coroutine warningBlinkCoroutine;
+
+        [Header("Checkpoint Info UI")]
+        private TMP_Text checkpointInfoText;
+        private string lastCheckpointName = "";
+        private List<SR_Checkpoint> orderedCheckpoints = new List<SR_Checkpoint>();
 
         private void Awake()
         {
@@ -112,10 +118,11 @@ namespace SpeedRush
             isGameActive = true;
             hasStartedDriving = false; // Setel ke false agar waktu tidak langsung berkurang
 
-            // Cari dan hitung total checkpoint normal di scene (tidak termasuk garis finish)
-            SR_Checkpoint[] checkpoints = Object.FindObjectsByType<SR_Checkpoint>(FindObjectsSortMode.None);
+            // Urutkan checkpoint secara dinamis berdasarkan letak spasial di aspal jalan
+            OrderCheckpoints();
+
             totalCheckpointsCount = 0;
-            foreach (var cp in checkpoints)
+            foreach (var cp in orderedCheckpoints)
             {
                 if (!cp.isFinishLine)
                 {
@@ -132,6 +139,53 @@ namespace SpeedRush
                 lastPassedCheckpointPos = playerCar.transform.position;
                 lastPassedCheckpointRot = playerCar.transform.rotation;
             }
+
+            // Inisialisasi awal recovery checkpoint ke Finish Line jika jaraknya dekat/di Level 2
+            if (orderedCheckpoints.Count > 0)
+            {
+                SR_Checkpoint finishLine = orderedCheckpoints[0]; // Indeks 0 selalu FinishLine
+                if (finishLine != null && finishLine.isFinishLine)
+                {
+                    // Deteksi posisi aspal secara dinamis menggunakan raycast fisika
+                    Vector3 startPos = finishLine.transform.position;
+                    if (Physics.Raycast(finishLine.transform.position, Vector3.down, out RaycastHit hit, 20f))
+                    {
+                        startPos = hit.point + Vector3.up * 0.5f;
+                    }
+                    else if (Physics.Raycast(finishLine.transform.position + Vector3.up * 10f, Vector3.down, out RaycastHit hitUp, 20f))
+                    {
+                        startPos = hitUp.point + Vector3.up * 0.5f;
+                    }
+                    else if (finishLine.flipposset != null)
+                    {
+                        startPos = finishLine.flipposset.position;
+                    }
+
+                    Quaternion startRot = finishLine.transform.rotation;
+
+                    // Ambil checkpoint pertama setelah garis finish (indeks 1)
+                    SR_Checkpoint checkpoint1 = (orderedCheckpoints.Count > 1) ? orderedCheckpoints[1] : null;
+
+                    if (checkpoint1 != null)
+                    {
+                        Vector3 dirToCp1 = (checkpoint1.transform.position - startPos).normalized;
+                        dirToCp1.y = 0f;
+                        if (dirToCp1.sqrMagnitude > 0.01f)
+                        {
+                            startRot = Quaternion.LookRotation(dirToCp1);
+                        }
+                    }
+
+                    // Terapkan ke recovery point jika di Level 2 atau jarak mobil dekat start
+                    bool isLevel2 = SceneManager.GetActiveScene().name == "Level2";
+                    if (playerCar != null && (isLevel2 || Vector3.Distance(playerCar.transform.position, startPos) < 25f))
+                    {
+                        lastPassedCheckpointPos = startPos;
+                        lastPassedCheckpointRot = startRot;
+                        Debug.Log("[GameManager] Recovery point awal diatur di Finish Line: " + lastPassedCheckpointPos + " facing " + lastPassedCheckpointRot.eulerAngles);
+                    }
+                }
+            }
  
             // Sembunyikan panel UI jika diset
             if (winPanel != null) winPanel.SetActive(false);
@@ -142,10 +196,76 @@ namespace SpeedRush
             UpdateUI();
         }
 
+        private void OrderCheckpoints()
+        {
+            orderedCheckpoints.Clear();
+            
+            // Cari seluruh checkpoint di scene
+            SR_Checkpoint[] allCps = Object.FindObjectsByType<SR_Checkpoint>(FindObjectsSortMode.None);
+            if (allCps.Length == 0) return;
+
+            // Pisahkan FinishLine dan checkpoint biasa
+            SR_Checkpoint finishLine = null;
+            List<SR_Checkpoint> normalCheckpoints = new List<SR_Checkpoint>();
+            foreach (var cp in allCps)
+            {
+                if (cp.isFinishLine)
+                    finishLine = cp;
+                else
+                    normalCheckpoints.Add(cp);
+            }
+
+            // Urutkan checkpoint biasa berdasarkan angka di namanya (Checkpoint_1, Checkpoint_2, dll.)
+            normalCheckpoints.Sort((a, b) => {
+                string numA = System.Text.RegularExpressions.Regex.Match(a.name, @"\d+").Value;
+                string numB = System.Text.RegularExpressions.Regex.Match(b.name, @"\d+").Value;
+                if (int.TryParse(numA, out int valA) && int.TryParse(numB, out int valB))
+                {
+                    return valA.CompareTo(valB);
+                }
+                return string.Compare(a.name, b.name);
+            });
+
+            // Finish line selalu di indeks 0
+            if (finishLine != null)
+            {
+                orderedCheckpoints.Add(finishLine);
+            }
+            orderedCheckpoints.AddRange(normalCheckpoints);
+
+            Debug.Log("[GameManager] Checkpoints berhasil diurutkan berdasarkan nama.");
+            for (int i = 0; i < orderedCheckpoints.Count; i++)
+            {
+                Debug.Log($"Index {i}: {orderedCheckpoints[i].name}");
+            }
+        }
+
+        public SR_Checkpoint GetNextCheckpoint(SR_Checkpoint current)
+        {
+            if (orderedCheckpoints == null || orderedCheckpoints.Count == 0) return null;
+            int index = orderedCheckpoints.IndexOf(current);
+            if (index == -1) return null;
+            
+            int nextIndex = (index + 1) % orderedCheckpoints.Count;
+            return orderedCheckpoints[nextIndex];
+        }
+
+
         public bool HasStartedDriving
         {
             get => hasStartedDriving;
             set => hasStartedDriving = value;
+        }
+
+        public bool IsGameActive => isGameActive;
+
+        public void SetGameActive(bool active)
+        {
+            isGameActive = active;
+            if (active)
+            {
+                Time.timeScale = 1f;
+            }
         }
 
         private void Update()
@@ -283,10 +403,22 @@ namespace SpeedRush
             }
         }
 
-        public void UpdateLastCheckpoint(Vector3 position, Quaternion rotation)
+        public void UpdateLastCheckpoint(Vector3 position, Quaternion rotation, SR_Checkpoint cp = null)
         {
             lastPassedCheckpointPos = position;
             lastPassedCheckpointRot = rotation;
+            if (cp != null)
+            {
+                if (cp.isFinishLine)
+                {
+                    lastCheckpointName = "Finish Line";
+                }
+                else
+                {
+                    int index = orderedCheckpoints.IndexOf(cp);
+                    lastCheckpointName = (index != -1) ? index.ToString() : cp.name;
+                }
+            }
             Debug.Log("Checkpoint Pemulihan terdaftar di posisi: " + position);
         }
 
@@ -294,26 +426,68 @@ namespace SpeedRush
         {
             if (playerCar != null)
             {
-                var rb = playerCar.GetComponent<Rigidbody>();
-                if (rb != null)
-                {
-                    rb.linearVelocity = Vector3.zero;
-                    rb.angularVelocity = Vector3.zero;
-                    rb.isKinematic = true; // Matikan fisika sejenak agar teleportasi mulus
-                }
-
-                // Teleportasi ke checkpoint terakhir dengan melayang sedikit agar ban tidak menembus aspal
-                playerCar.transform.position = lastPassedCheckpointPos + Vector3.up * 0.8f;
-                playerCar.transform.rotation = lastPassedCheckpointRot;
-
-                if (rb != null)
-                {
-                    rb.isKinematic = false;
-                }
-                
-                playerCar.ResetStuckTimer();
-                Debug.Log("Mobil berhasil di-reset ke Checkpoint Terakhir!");
+                StartCoroutine(ResetCarCoroutine());
             }
+        }
+
+        private IEnumerator ResetCarCoroutine()
+        {
+            var rb = playerCar.GetComponent<Rigidbody>();
+            if (rb != null)
+            {
+                rb.linearVelocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+                rb.isKinematic = true;
+
+                // Kunci rotasi agar WheelCollider suspensi tidak memutar mobil saat pertama kali menyentuh jalan
+                rb.constraints = RigidbodyConstraints.FreezeRotation;
+            }
+
+            // Matikan WheelCollider agar tidak mengacaukan posisi awal
+            var wheels = playerCar.GetComponentsInChildren<WheelCollider>();
+            foreach (var wheel in wheels)
+            {
+                wheel.enabled = false;
+            }
+
+            // Teleport: posisi di tengah jalan, tinggi cukup agar jatuh perlahan
+            playerCar.transform.position = lastPassedCheckpointPos + Vector3.up * 1.5f;
+            playerCar.transform.rotation = lastPassedCheckpointRot;
+            Debug.Log("[RESET] rotation set to Y=" + lastPassedCheckpointRot.eulerAngles.y.ToString("F1") + " at pos=" + lastPassedCheckpointPos);
+
+            // Tunggu beberapa frame agar mobil settle ke jalan dengan rotasi terkunci
+            yield return new WaitForFixedUpdate();
+            yield return new WaitForFixedUpdate();
+
+            // Aktifkan kembali WheelCollider
+            foreach (var wheel in wheels)
+            {
+                wheel.enabled = true;
+            }
+
+            // Aktifkan kembali fisika, pastikan kecepatan nol
+            if (rb != null)
+            {
+                rb.isKinematic = false;
+                rb.linearVelocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+            }
+
+            // Tunggu mobil kontak jalan dulu, baru lepas kunci rotasi
+            yield return new WaitForFixedUpdate();
+            yield return new WaitForFixedUpdate();
+
+            // Sekarang mobil sudah settle — lepas kunci rotasi agar bisa dikemudi normal
+            if (rb != null)
+            {
+                rb.constraints = RigidbodyConstraints.None;
+            }
+
+            // Log rotasi aktual setelah settle
+            Debug.Log("[RESET] settled rot=" + playerCar.transform.rotation.eulerAngles + " fwd=" + playerCar.transform.forward);
+
+            playerCar.ResetStuckTimer();
+            Debug.Log("Mobil berhasil di-reset ke Checkpoint Terakhir dengan aman dan stabil!");
         }
 
         private void UpdateUI()
@@ -342,6 +516,46 @@ namespace SpeedRush
             {
                 lapText.text = "Lap: " + currentLap + "/" + totalLaps;
             }
+
+            // Update checkpoint info
+            if (checkpointInfoText == null)
+            {
+                SetupCheckpointInfoUI();
+            }
+            if (checkpointInfoText != null && !string.IsNullOrEmpty(lastCheckpointName))
+            {
+                checkpointInfoText.text = "Checkpoint: " + lastCheckpointName;
+                checkpointInfoText.gameObject.SetActive(true);
+            }
+        }
+
+        private void SetupCheckpointInfoUI()
+        {
+            Canvas canvas = Object.FindFirstObjectByType<Canvas>();
+            if (canvas == null) return;
+
+            GameObject infoObj = new GameObject("CheckpointInfoText", typeof(RectTransform), typeof(TextMeshProUGUI));
+            infoObj.transform.SetParent(canvas.transform, false);
+
+            checkpointInfoText = infoObj.GetComponent<TextMeshProUGUI>();
+            checkpointInfoText.text = "";
+            checkpointInfoText.fontSize = 24;
+            checkpointInfoText.color = Color.cyan;
+            checkpointInfoText.alignment = TextAlignmentOptions.Left;
+
+            if (timerText != null)
+            {
+                checkpointInfoText.font = timerText.font;
+            }
+
+            RectTransform rect = infoObj.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0f, 0.85f);
+            rect.anchorMax = new Vector2(0f, 0.85f);
+            rect.pivot = new Vector2(0f, 0.5f);
+            rect.anchoredPosition = new Vector2(10f, 0f);
+            rect.sizeDelta = new Vector2(300, 40);
+
+            infoObj.SetActive(false);
         }
 
         // --- BUTTON ACTIONS ---
