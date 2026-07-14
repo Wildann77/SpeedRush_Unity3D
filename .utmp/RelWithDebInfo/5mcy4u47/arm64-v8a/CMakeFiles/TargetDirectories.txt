@@ -1,0 +1,5 @@
+/mnt/windows/Users/boyblanco/Documents/SpeedRush1/.utmp/RelWithDebInfo/5mcy4u47/arm64-v8a/CMakeFiles/edit_cache.dir
+/mnt/windows/Users/boyblanco/Documents/SpeedRush1/.utmp/RelWithDebInfo/5mcy4u47/arm64-v8a/CMakeFiles/rebuild_cache.dir
+/mnt/windows/Users/boyblanco/Documents/SpeedRush1/.utmp/RelWithDebInfo/5mcy4u47/arm64-v8a/GameActivity/CMakeFiles/game.dir
+/mnt/windows/Users/boyblanco/Documents/SpeedRush1/.utmp/RelWithDebInfo/5mcy4u47/arm64-v8a/GameActivity/CMakeFiles/edit_cache.dir
+/mnt/windows/Users/boyblanco/Documents/SpeedRush1/.utmp/RelWithDebInfo/5mcy4u47/arm64-v8a/GameActivity/CMakeFiles/rebuild_cache.dir

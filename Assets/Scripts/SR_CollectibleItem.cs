@@ -36,10 +36,6 @@ namespace SpeedRush
         {
             // Efek berputar agar item terlihat hidup
             transform.Rotate(Vector3.up, rotateSpeed * Time.deltaTime, Space.World);
-
-            // Efek mengambang (bobbing) naik turun secara perlahan
-            float newY = startPos.y + Mathf.Sin(Time.time * bobSpeed) * bobHeight;
-            transform.position = new Vector3(transform.position.x, newY, transform.position.z);
         }
 
         private void OnTriggerEnter(Collider other)

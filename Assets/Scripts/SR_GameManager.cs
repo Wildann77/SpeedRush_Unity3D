@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 using TMPro;
 using System.Collections;
 using System.Collections.Generic;
@@ -13,7 +14,7 @@ namespace SpeedRush
         [Header("Game Settings")]
         public float initialTime = 40f;
         public int totalLaps = 1;
-        public string nextLevelName = "Level2";
+        public string nextLevelName = "MainMenu";
         public string mainMenuName = "MainMenu";
 
         [Header("UI References (Optional)")]
@@ -192,6 +193,8 @@ namespace SpeedRush
             if (losePanel != null) losePanel.SetActive(false);
  
             Time.timeScale = 1f;
+ 
+            SetupTimerPanel();
  
             UpdateUI();
         }
@@ -380,21 +383,48 @@ namespace SpeedRush
         public void GameOver(bool hasWon)
         {
             isGameActive = false;
-            Time.timeScale = 0.0001f; // Freeze game physics almost completely while keeping UI EventSystem active and responsive
+            Time.timeScale = 0.0001f;
 
-            // Pastikan kursor aktif dan terlihat saat panel Game Over (Win / Lose) muncul
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
 
             if (playerCar != null)
             {
-                playerCar.enabled = false; // Matikan kontrol mobil
+                playerCar.enabled = false;
+            }
+
+            // Sembunyiin SEMUA HUD, cuma win/lose panel yg tampil
+            Canvas canvas = Object.FindFirstObjectByType<Canvas>();
+            if (canvas != null)
+            {
+                foreach (Transform child in canvas.transform)
+                {
+                    GameObject go = child.gameObject;
+                    if (go == winPanel || go == losePanel) continue;
+                    go.SetActive(false);
+                }
             }
 
             if (hasWon)
             {
                 Debug.Log("Game Over: Player WON!");
-                if (winPanel != null) winPanel.SetActive(true);
+                PlayerPrefs.SetInt("Level2Unlocked", 1);
+                PlayerPrefs.Save();
+                if (winPanel != null)
+                {
+                    winPanel.SetActive(true);
+
+                    Transform winTextTf = winPanel.transform.Find("WinText");
+                    if (winTextTf != null)
+                    {
+                        TMP_Text winTmp = winTextTf.GetComponent<TMP_Text>();
+                        if (winTmp != null) winTmp.text = "GAME COMPLETED";
+                    }
+
+                    bool hasNextLevel = !string.IsNullOrEmpty(nextLevelName) && nextLevelName != "MainMenu";
+                    Transform nextBtnTf = winPanel.transform.Find("NextLevelButton");
+                    if (nextBtnTf != null) nextBtnTf.gameObject.SetActive(hasNextLevel);
+                }
             }
             else
             {
@@ -417,6 +447,12 @@ namespace SpeedRush
                 {
                     int index = orderedCheckpoints.IndexOf(cp);
                     lastCheckpointName = (index != -1) ? index.ToString() : cp.name;
+                }
+
+                if (checkpointInfoText != null)
+                {
+                    checkpointInfoText.text = "CP: " + lastCheckpointName;
+                    checkpointInfoText.gameObject.SetActive(true);
                 }
             }
             Debug.Log("Checkpoint Pemulihan terdaftar di posisi: " + position);
@@ -524,8 +560,7 @@ namespace SpeedRush
             }
             if (checkpointInfoText != null && !string.IsNullOrEmpty(lastCheckpointName))
             {
-                checkpointInfoText.text = "Checkpoint: " + lastCheckpointName;
-                checkpointInfoText.gameObject.SetActive(true);
+                checkpointInfoText.text = "CP: " + lastCheckpointName;
             }
         }
 
@@ -539,7 +574,7 @@ namespace SpeedRush
 
             checkpointInfoText = infoObj.GetComponent<TextMeshProUGUI>();
             checkpointInfoText.text = "";
-            checkpointInfoText.fontSize = 24;
+            checkpointInfoText.fontSize = (lapText != null) ? lapText.fontSize : 24;
             checkpointInfoText.color = Color.cyan;
             checkpointInfoText.alignment = TextAlignmentOptions.Left;
 
@@ -549,13 +584,40 @@ namespace SpeedRush
             }
 
             RectTransform rect = infoObj.GetComponent<RectTransform>();
-            rect.anchorMin = new Vector2(0f, 0.85f);
-            rect.anchorMax = new Vector2(0f, 0.85f);
-            rect.pivot = new Vector2(0f, 0.5f);
-            rect.anchoredPosition = new Vector2(10f, 0f);
-            rect.sizeDelta = new Vector2(300, 40);
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = new Vector2(40f, -105f);
+            rect.sizeDelta = new Vector2(300, 70);
 
             infoObj.SetActive(false);
+        }
+
+        private void SetupTimerPanel()
+        {
+            if (timerText == null) return;
+
+            Canvas canvas = Object.FindFirstObjectByType<Canvas>();
+            if (canvas == null) return;
+
+            RectTransform timerRect = timerText.GetComponent<RectTransform>();
+
+            GameObject panelObj = new GameObject("TimerPanel", typeof(RectTransform), typeof(Image));
+            panelObj.transform.SetParent(canvas.transform, false);
+
+            Image panelImg = panelObj.GetComponent<Image>();
+            panelImg.color = new Color(0, 0, 0, 0.4f);
+
+            RectTransform panelRect = panelObj.GetComponent<RectTransform>();
+            panelRect.anchorMin = timerRect.anchorMin;
+            panelRect.anchorMax = timerRect.anchorMax;
+            panelRect.pivot = timerRect.pivot;
+            panelRect.anchoredPosition = timerRect.anchoredPosition;
+            panelRect.sizeDelta = new Vector2(500, 70);
+
+            timerText.transform.SetParent(panelObj.transform, false);
+            timerRect.anchoredPosition = Vector2.zero;
+            timerRect.sizeDelta = panelRect.sizeDelta;
         }
 
         // --- BUTTON ACTIONS ---

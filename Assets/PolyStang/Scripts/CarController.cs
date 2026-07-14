@@ -53,7 +53,7 @@ namespace PolyStang
 
         [Header("Speed limit")]
         public float frontMaxSpeed = 200;
-        public float rearMaxSpeed = 50;
+        public float rearMaxSpeed = 75;
         public float empiricalCoefficient = 0.41f;
         public enum TypeOfSpeedLimit
         {
@@ -87,6 +87,9 @@ namespace PolyStang
 
         private float moveInput;
         private float steerInput;
+        private float brakeInput;
+        private float touchMoveInput;
+        private float touchSteerInput;
         private float keyboardSteerTarget; // Digunakan untuk smoothing input keyboard
 
         private Rigidbody carRb;
@@ -170,21 +173,32 @@ namespace PolyStang
 
         public void MoveInput(float input) // used for touch controls.
         {
-            moveInput = input;
+            touchMoveInput = input;
         }
 
         public void SteerInput(float input) // used for touch controls.
         {
-            steerInput = input;
+            touchSteerInput = input;
+        }
+
+        public void BrakeInput(float input) // used for touch controls. 0-1, 0 = no brake.
+        {
+            brakeInput = input;
         }
 
         void GetInputs() // inputs.
         {
-            if (control == ControlMode.Keyboard)
+            float kbMove = Input.GetAxis("Vertical");
+            float kbSteer = Input.GetAxis("Horizontal");
+
+            // Dual input: touch overrides keyboard when actively used
+            moveInput = Mathf.Abs(touchMoveInput) > 0.01f ? touchMoveInput : kbMove;
+
+            if (Mathf.Abs(touchSteerInput) > 0.01f)
+                steerInput = touchSteerInput;
+            else
             {
-                moveInput = Input.GetAxis("Vertical");
-                // Menggunakan GetAxis yang memiliki filtering bawaan Unity untuk belok yang lebih halus
-                keyboardSteerTarget = Input.GetAxis("Horizontal");
+                keyboardSteerTarget = kbSteer;
                 steerInput = Mathf.MoveTowards(steerInput, keyboardSteerTarget, steerFilterSpeed * Time.deltaTime);
             }
         }
@@ -261,8 +275,7 @@ namespace PolyStang
                 if (wheel.axel == Axel.Front)
                 {
                     var _steerAngle = steerInput * turnSensitivity * currentMaxSteerAngle;
-                    // Lerp dikurangi dari 0.6 ke 0.1 agar setir tidak "menghentak" (snap) yang bikin drift
-                    wheel.wheelCollider.steerAngle = Mathf.Lerp(wheel.wheelCollider.steerAngle, _steerAngle, 0.1f);
+                    wheel.wheelCollider.steerAngle = Mathf.Lerp(wheel.wheelCollider.steerAngle, _steerAngle, 0.2f);
                 }
 
                 // Tingkatkan cengkeraman ban secara agresif
@@ -310,11 +323,11 @@ namespace PolyStang
 
         void BrakeAndDeacceleration()
         {
-            if (Input.GetKey(brakeKey)) // when pressing space, the brake is used.
+            if (brakeInput > 0 || Input.GetKey(brakeKey)) // when pressing space, the brake is used.
             {
                 foreach (var wheel in wheels)
                 {
-                    wheel.wheelCollider.brakeTorque = 300 * brakeAcceleration;
+                    wheel.wheelCollider.brakeTorque = 300 * brakeAcceleration * (brakeInput > 0 ? brakeInput : 1f);
                 }
 
             }
@@ -355,7 +368,7 @@ namespace PolyStang
                 wheel.wheelCollider.GetGroundHit(out GroundHit); // store hit data into GroundHit
                 float lateralDrift = Mathf.Abs(GroundHit.sidewaysSlip);
 
-                if (Input.GetKey(brakeKey) && wheel.axel == Axel.Rear && wheel.wheelCollider.isGrounded == true && carRb.linearVelocity.magnitude >= brakeDriftingSkidLimit)
+                if ((brakeInput > 0 || Input.GetKey(brakeKey)) && wheel.axel == Axel.Rear && wheel.wheelCollider.isGrounded == true && carRb.linearVelocity.magnitude >= brakeDriftingSkidLimit)
                 {
                     EffectCreate(wheel);
                 }
@@ -384,7 +397,7 @@ namespace PolyStang
 
         void CarLightsControl() // controlling lights, through the specific script "CarSounds".
         {
-            if (Input.GetKey(brakeKey)) // the red lights are activated when the brake is pressed
+            if (brakeInput > 0 || Input.GetKey(brakeKey)) // the red lights are activated when the brake is pressed
             {
                 carLights.RearRedLightsOn();
             }
